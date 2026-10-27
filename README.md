@@ -1,30 +1,49 @@
 # LADR
 
-Hierarchical document and passage modeling for conversational dense retrieval.
+LADR models conversational retrieval at two levels: choosing a document and selecting a passage within that document. A session encoder produces topic and focus representations so that the retrieval scores can use both the conversation's broader subject and its current question.
 
-This repository publishes the project's implementation, training, retrieval, evaluation and experiment-launch code. Manuscripts, submission documents, publication figures and their typesetting scripts are excluded.
+## Code layout
 
-## Code map
+| Path | Purpose |
+| --- | --- |
+| `code/prism.py` | Query encoders and hierarchical model components |
+| `code/train.py` | Training, evaluation and model configuration |
+| `code/retrieval.py` | Passage and document indexes; retrieval metrics |
+| `code/prep_data.py` | TopiOCQA and OR-QuAC conversion |
+| `code/build_docs.py` | Document embeddings and passage-to-document mapping |
+| `code/build_dstore.py` | Grouped document store for training |
 
-- `code/prism.py`: model implementations, including the hierarchical variants under their original development names.
-- `code/train.py`: training and evaluation; `--expert centroid --cond 1 --learn_tau 1` expose the hierarchical model settings.
-- `code/retrieval.py`: collection search and retrieval metrics.
-- `code/prep_data.py`, `build_docs.py`, `build_dstore.py`: data and document structure.
+Some modules retain their development names. The hierarchical configuration is selected with `--kind concat --latent`; `prism.py` also contains the other query encoders used for comparison.
 
 ## Environment and data
 
-The code uses Python and a GPU-oriented PyTorch/Transformers stack. Inspect the imports and command-line options of the selected entry point before installing dependencies. Historical snapshots and comparison implementations are retained; they are not all required for one experiment.
+Use CUDA-enabled PyTorch with Transformers, NumPy, pandas, PyArrow and scikit-learn. The query encoder uses `BAAI/bge-base-en-v1.5`.
 
-Download benchmark datasets and pretrained models from their original providers. The source release does not contain benchmark corpora, generated trajectories, trained weights or retrieval indexes. Some launch scripts use the original experiment directory layout, GPU assignments and model-cache paths; set these for your own machine before running them. No claim is made that a new machine reproduces the experiments without preparing these inputs.
+Download TopiOCQA and OR-QuAC from their providers and prepare the corresponding passage collections. Run `code/prep_data.py` from the repository root after setting up its input files. Training and full-collection evaluation also require the frozen passage-index shards expected by `code/retrieval.py`.
 
-## Remote execution
+For a prepared TopiOCQA passage index:
 
-Remote helpers that previously embedded login details now read `SSH_HOST`, `SSH_PORT` (default 22), `SSH_USER` and optional `SSH_PASSWORD` from the environment. Set these locally, or use your SSH agent/key configuration. Do not commit credentials or local server information files.
+```bash
+python code/prep_data.py topiocqa
+python code/build_docs.py topiocqa
+python code/build_dstore.py topiocqa
+```
 
-## Included snapshots and third-party code
+`build_docs.py` adds document IDs and document embeddings. `build_dstore.py` groups passages by document and prepares the training store. Inspect their input paths alongside `code/retrieval.py` when arranging a new local collection.
 
-Source subdirectories retain their original relative paths. Where `repos/` is present, the included upstream source retains its existing LICENSE and NOTICE files. Those licenses apply to their respective components. No new license grant for the project's own code has been added in this release.
+## Train and evaluate
 
-## Release checks
+```bash
+python code/train.py --kind concat --latent --expert centroid --cond 1 --learn_tau 1 --data topiocqa --name ladr_seed0 --seed 0
+python code/train.py --kind concat --latent --expert centroid --cond 1 --learn_tau 1 --data topiocqa --name ladr_seed0 --seed 0 --eval_only
+```
 
-Python source files were parsed for syntax, publication files were excluded, and the release was checked for embedded SSH credentials and common token/private-key patterns. Training and large-scale retrieval experiments were not rerun as part of packaging.
+`--expert centroid` selects the document-level representation; `--cond 1` normalizes passage scores within a document, and `--learn_tau 1` learns the topic and focus temperatures. Use the same model options and run name when loading a checkpoint for evaluation.
+
+Run artifacts are written to `runs/<name>/`, including `model.pt`, evaluation JSON files and ranked-passage arrays. Cross-dataset evaluation is available through `--eval_data` and `--eval_split` after preparing the target collection.
+
+This repository contains implementation and experiment code. Benchmark collections, indexes, checkpoints and manuscript materials are not included.
+
+## License
+
+A license for the project-specific code has not yet been specified.
